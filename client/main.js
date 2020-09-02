@@ -1,6 +1,6 @@
 import { Template } from 'meteor/templating';
 import { ReactiveVar } from 'meteor/reactive-var';
-
+import { myPackageMethod } from 'meteor/larswolter:dynamic-package';
 import './main.html';
 
 let initialValue;
@@ -29,6 +29,7 @@ Template.hello.events({
     // increment the counter when button is clicked
     instance.counter.set(instance.counter.get() + 1);
     instance.imported.set('importing...');
+    myPackageMethod();
     import('../imports/imported').then(({ showImportedStuff }) => {
       instance.imported.set(showImportedStuff());
     });
