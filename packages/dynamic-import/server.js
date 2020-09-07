@@ -12,7 +12,7 @@ const hasOwn = Object.prototype.hasOwnProperty;
 
 require("./security.js");
 
-const client = require("./client.js");
+const moduleOverrides = require("./moduleOverrides.js");
 
 Meteor.startup(() => {
   if (! Package.webapp) {
@@ -49,7 +49,7 @@ function setUpPlatform(platform) {
   }
 
   if (platform === "server") {
-    client.setSecretKey(info.key = randomId(40));
+    moduleOverrides.setSecretKey(info.key = randomId(40));
   }
 }
 

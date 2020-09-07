@@ -1,173 +1,38 @@
-const Module = module.constructor;
-const cache = require("./cache.js");
-const meteorInstall = require("meteor/modules").meteorInstall;
+require ("./moduleOverrides.js");
 
-// Call module.dynamicImport(id) to fetch a module and any/all of its
-// dependencies that have not already been fetched, and evaluate them as
-// soon as they arrive. This runtime API makes it very easy to implement
-// ECMAScript dynamic import(...) syntax.
-Module.prototype.dynamicImport = function (id) {
-  const module = this;
-  return module.prefetch(id).then(function () {
-    return getNamespace(module, id);
-  });
-};
+const { precacheDynamicModules } = require("./dynamic-versions");
 
-// Called by Module.prototype.prefetch if there are any missing dynamic
-// modules that need to be fetched.
-meteorInstall.fetch = function (ids) {
-  const dynamicVersions = require("./dynamic-versions.js");
-  const tree = Object.create(null);
-  const versions = Object.create(null);
-  let missing;
+// precaching happens automatically when appcache is used
+// this behavior is backwards compatible
+// on newer Browsers
+function precacheOnLoad() {
 
-  function addSource(id, source) {
-    addToTree(tree, id, makeModuleFunction(id, source, ids[id].options));
-  }
-
-  function addMissing(id) {
-    addToTree(missing = missing || Object.create(null), id, 1);
-  }
-
-  Object.keys(ids).forEach(function (id) {
-    const version = dynamicVersions.get(id);
-    if (version) {
-      versions[id] = version;
-    } else {
-      addMissing(id);
+  // Check inside onload to make sure Package.appcache has had a chance to
+  // become available.
+  if (!Package.appcache) {
+    if(Meteor.isDevelopment) {
+      console.log('dynamic-imports dynamic modules are not precached, because appcache package is not loaded');
     }
-  });
-
-  return cache.checkMany(versions).then(function (sources) {
-    Object.keys(sources).forEach(function (id) {
-      const source = sources[id];
-      if (source) {
-        addSource(id, source);
-      } else {
-        addMissing(id);
-      }
-    });
-
-    return missing && fetchMissing(missing).then(function (results) {
-      const versionsAndSourcesById = Object.create(null);
-      const flatResults = flattenModuleTree(results);
-
-      Object.keys(flatResults).forEach(function (id) {
-        const source = flatResults[id];
-        addSource(id, source);
-
-        const version = dynamicVersions.get(id);
-        if (version) {
-          versionsAndSourcesById[id] = {
-            version,
-            source
-          };
-        }
-      });
-
-      cache.setMany(versionsAndSourcesById);
-    });
-
-  }).then(function () {
-    return tree;
-  });
-};
-
-function flattenModuleTree(tree) {
-  const parts = [""];
-  const result = Object.create(null);
-
-  function walk(t) {
-    if (t && typeof t === "object") {
-      Object.keys(t).forEach(function (key) {
-        parts.push(key);
-        walk(t[key]);
-        parts.pop();
-      });
-    } else if (typeof t === "string") {
-      result[parts.join("/")] = t;
-    }
+    return;
   }
-
-  walk(tree);
-
-  return result;
+  if(Meteor.isDevelopment) {
+    console.log('dynamic-imports precaching dynamic modules, because of existing appcache package');
+  }
+  precacheDynamicModules();
 }
 
-function makeModuleFunction(id, source, options) {
-  // By calling (options && options.eval || eval) in a wrapper function,
-  // we delay the cost of parsing and evaluating the module code until the
-  // module is first imported.
-  return function () {
-    // If an options.eval function was provided in the second argument to
-    // meteorInstall when this bundle was first installed, use that
-    // function to parse and evaluate the dynamic module code in the scope
-    // of the package. Otherwise fall back to indirect (global) eval.
-    return (options && options.eval || eval)(
-      // Wrap the function(require,exports,module){...} expression in
-      // parentheses to force it to be parsed as an expression.
-      "(" + source + ")\n//# sourceURL=" + id
-    ).apply(this, arguments);
-  };
+// Use window.onload to only prefetch after the main bundle has loaded.
+if (global.addEventListener) {
+  global.addEventListener('load', precacheOnLoad, false);
+} else if (global.attachEvent) {
+  global.attachEvent('onload', precacheOnLoad);
 }
 
-let secretKey = null;
-exports.setSecretKey = function (key) {
-  secretKey = key;
-};
+exports.precacheDynamicModules = precacheDynamicModules;
+exports.onPrecacheFinished = function(callback) {
 
-const fetchURL = require("./common.js").fetchURL;
-
-function fetchMissing(missingTree) {
-  // If the hostname of the URL returned by Meteor.absoluteUrl differs
-  // from location.host, then we'll be making a cross-origin request here,
-  // but that's fine because the dynamic-import server sets appropriate
-  // CORS headers to enable fetching dynamic modules from any
-  // origin. Browsers that check CORS do so by sending an additional
-  // preflight OPTIONS request, which may add latency to the first dynamic
-  // import() request, so it's a good idea for ROOT_URL to match
-  // location.host if possible, though not strictly necessary.
-  let url = Meteor.absoluteUrl(fetchURL);
-
-  if (secretKey) {
-    url += "key=" + secretKey;
-  }
-
-  return fetch(url, {
-    method: "POST",
-    body: JSON.stringify(missingTree)
-  }).then(function (res) {
-    if (!res.ok) throw res;
-    return res.json();
-  });
 }
 
-function addToTree(tree, id, value) {
-  const parts = id.split("/");
-  const lastIndex = parts.length - 1;
-  parts.forEach(function (part, i) {
-    if (part) {
-      tree = tree[part] = tree[part] ||
-        (i < lastIndex ? Object.create(null) : value);
-    }
-  });
-}
+exports.clearDynamicModulesCache = function() {
 
-function getNamespace(module, id) {
-  let namespace;
-
-  module.link(id, {
-    "*"(ns) {
-      namespace = ns;
-    }
-  });
-
-  // This helps with Babel interop, since we're not just returning the
-  // module.exports object.
-  Object.defineProperty(namespace, "__esModule", {
-    value: true,
-    enumerable: false
-  });
-
-  return namespace;
 }

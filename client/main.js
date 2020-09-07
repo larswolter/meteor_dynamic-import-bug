@@ -4,11 +4,11 @@ import { myPackageMethod } from 'meteor/larswolter:dynamic-package';
 import './main.html';
 
 let initialValue;
-/* uncomment this and precaching will work
+/* uncomment this and precaching will work */
 import('../imports/imported2').then(({ showImportedStuff }) => {
   initialValue = showImportedStuff();
 });
-*/
+
 Template.hello.onCreated(function helloOnCreated() {
   // counter starts at 0
   this.counter = new ReactiveVar(0);
@@ -30,6 +30,9 @@ Template.hello.events({
     instance.counter.set(instance.counter.get() + 1);
     instance.imported.set('importing...');
     myPackageMethod();
+
+    // Also test if server side dynamic imports still work
+    Meteor.call('click');
     import('../imports/imported').then(({ showImportedStuff }) => {
       instance.imported.set(showImportedStuff());
     });
